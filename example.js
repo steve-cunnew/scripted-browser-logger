@@ -7,6 +7,7 @@ const GLOBAL_START_TIME = Date.now();
 // Step type definitions - DO NOT MODIFY THIS
 const STEP_TYPE = { HARD: 3, SOFT: 2, OPTIONAL: 1 };
 
+// --- User modifiable section starts here ---
 
 // Add any required modules or shortcuts for the script and steps
 const assert = require("assert");
@@ -22,13 +23,26 @@ const DESKTOP_VIEWPORT_HEIGHT=1080
 // It can be better to reduce this to 1 or even 0 seconds and use explicit timeouts where they are needed.
 const IMPLICIT_TIMEOUT_SECONDS=1;
 
+// If DEBUG is true for a step type, the source code of the stepFn function will be output in the console if a failure occurs.
+const DEBUG_STEP_TYPE = {
+  HARD: true,
+  SOFT: true,
+  OPTIONAL: false
+}
+
+// Record the step failures as attributes with the synthetic check
+const USE_FAILURE_ATTRIBUTES = true;
+
+// Declare any helper functions you wish to use in the steps here
+
+
 // Define each step of the script using the template
 const STEPS = [
 /*
   {
     type: STEP_TYPE.HARD, //optional - STEP_TYPE.HARD, STEP_TYPE.SOFT or STEP_TYPE.OPTIONAL. Defaults to STEP_TYPE.HARD.
     description: "", // Provide a description for this step
-    category: "", // Each step can be grouped into a category. If not category is provided for a step it will use the previous value.
+    category: "", // Each step can be grouped into a category. If no category is provided for a step the previous step's category will be used.
     stepFn: async (obj) => {  // The async function to be invoked for this step.
       // Perform the task for this step, e.g. load the desired page
 
@@ -69,12 +83,9 @@ const STEPS = [
     }
   },
 
-
 ];
 
-/*************************************************
- *    Core code. DO NOT MODIFY BELOW HERE        *
- *************************************************/
+// --- User modifiable section ends here ---
 
 async function updateCheckSettings() {
 
@@ -82,7 +93,6 @@ async function updateCheckSettings() {
 
   // Set the implicit timeout to the specified number of seconds
   if (typeof IMPLICIT_TIMEOUT_SECONDS === 'number') {
-    const newTimeout = IMPLICIT_TIMEOUT_SECONDS * 1000;
     console.log(`Setting implicit timeout to ${IMPLICIT_TIMEOUT_SECONDS} second${IMPLICIT_TIMEOUT_SECONDS === 1? '': 's'}.`);
     await $webDriver.manage().setTimeouts({ implicit: IMPLICIT_TIMEOUT_SECONDS * 1000 });
   } else {
@@ -128,7 +138,8 @@ async function processSteps(steps) {
   // A counter of steps per category
   const CATEGORY_STEP = {};
   // A record of failed soft steps
-  const FAILED_STEPS = [];
+  const FAILED_STEPS_SOFT = [];
+  const FAILED_STEPS_OPTIONAL = [];
   const NUM_STEPS = steps.length;
   
   // Get the details for the current device
@@ -150,9 +161,7 @@ async function processSteps(steps) {
     // Get the step number for this category, initialising it if this is the first step in the category
     const categoryStepNum = CATEGORY_STEP[category] = CATEGORY_STEP[category] ? CATEGORY_STEP[category] += 1 : 1;
     
-    console.log(
-      `START  Step ${stepNum} of ${NUM_STEPS}: [${category}: ${categoryStepNum}]: ${description}  ->  started: ${startTimestamp}ms`
-    );
+    console.log(`START  Step ${stepNum} of ${NUM_STEPS}: [${category}: ${categoryStepNum}]: ${description}  ->  started: ${startTimestamp}ms`);
     try {
       //runs the function for this step
       previousReturnedObj = await step.stepFn(previousReturnedObj); 
@@ -161,59 +170,68 @@ async function processSteps(steps) {
       previousReturnedObj = null;
       // Check if the step that threw the error is a SOFT, OPTIONAL or HARD failure.
       if (step.type === STEP_TYPE.SOFT) {
-        console.log(
-          `ERROR! Step ${stepNum} of ${NUM_STEPS}: [${category}: ${categoryStepNum}]: ${description}\n  ╚══> This is a SOFT step error so processing of further steps will continue but the journey will be failed.`
-        );
-        console.log(`Error message:\n${error.message}`);
-        FAILED_STEPS.push({
+        console.log(`ERROR! Step ${stepNum} of ${NUM_STEPS}: [${category}: ${categoryStepNum}]: ${description}\n  ╚══> This is a SOFT step error so processing of further steps will continue but the journey will be failed.`);
+        if (typeof DEBUG_STEP_TYPE === 'object' && DEBUG_STEP_TYPE.SOFT) {
+          console.log(`\nDEBUG - stepFn:\n${step.stepFn.toString()}\n`);
+        }
+        console.log(`Error message:\n${error.message}\n`);
+        FAILED_STEPS_SOFT.push({
+          stepNum: stepNum,
           failure: `Step ${stepNum} of ${NUM_STEPS}: [${category}: ${categoryStepNum}]: ${description}`,
           reason: error.message,
         });
       } else if (step.type === STEP_TYPE.OPTIONAL) {
-        console.log(
-          `ERROR! Step ${stepNum} of ${NUM_STEPS}: [${category}: ${categoryStepNum}]: ${description}\n  ╚══> This is an OPTIONAL step so this error will not fail the journey.`
-        );
-        console.log(`Error message:\n${error.message}`);
+        console.log(`ERROR! Step ${stepNum} of ${NUM_STEPS}: [${category}: ${categoryStepNum}]: ${description}\n  ╚══> This is an OPTIONAL step so this error will not fail the journey.`);
+        console.log(`Error message:\n${error.message}\n`);
+        FAILED_STEPS_OPTIONAL.push(stepNum);
+        if (typeof DEBUG_STEP_TYPE === 'object' && DEBUG_STEP_TYPE.OPTIONAL) {
+          console.log(`\nDEBUG - stepFn:\n${step.stepFn.toString()}\n`);
+        }
       } else {
-        console.log(
-          `ERROR! Step ${stepNum} of ${NUM_STEPS}: [${category}: ${categoryStepNum}]: ${description}\n  ╚══> This is a HARD step error so processing of further steps will cease and the journey will be failed.`
-        );
-        console.log(step.stepFn.toString());
-        //HARD_FAILURE = `Step ${stepNum} of ${NUM_STEPS}: [${category}: ${categoryStepNum}] -> ${description}`;
-        if (FAILED_STEPS.length > 0) {
-          console.log(`There were also ${FAILED_STEPS.length} soft step failure${FAILED_STEPS.length > 1 ? 's' : ''}:`);
-          outputSoftFailures(FAILED_STEPS);
+        console.log(`ERROR! Step ${stepNum} of ${NUM_STEPS}: [${category}: ${categoryStepNum}]: ${description}\n  ╚══> This is a HARD step error so processing of further steps will cease and the journey will be failed.`);
+        if (typeof USE_FAILURE_ATTRIBUTES === 'boolean' && USE_FAILURE_ATTRIBUTES) {
+          $util.insights.set('hardFailureStepNum', stepNum);
+          $util.insights.set('hardFailureStepDesc', description);
+          if (FAILED_STEPS_SOFT.length > 0) {
+            $util.insights.set('softFailureStepNums', JSON.stringify(FAILED_STEPS_SOFT.map(step => step.stepNum)));
+          }
+          if (FAILED_STEPS_OPTIONAL.length > 0) {
+            $util.insights.set('softFailureStepNums', JSON.stringify(FAILED_STEPS_OPTIONAL));
+          }
+        }
+        if (typeof DEBUG_STEP_TYPE === 'object' && DEBUG_STEP_TYPE.HARD) {
+          console.log(`\nDEBUG - stepFn:\n${step.stepFn.toString()}\n`);
+        }
+        if (FAILED_STEPS_SOFT.length > 0) {
+          console.log(FAILED_STEPS_SOFT.length > 1 ? `There were also ${FAILED_STEPS_SOFT.length} soft step failures` : 'There was also 1 soft step failure');
+          outputSoftFailures(FAILED_STEPS_SOFT);
         }
         throw error;
       }
     }
 
     const endTimestamp = Date.now() - GLOBAL_START_TIME;
-    const elapsed = endTimestamp - startTimestamp;
-    console.log(
-      `FINISH Step ${stepNum} of ${NUM_STEPS}: [${category}: ${categoryStepNum}]: ${description}  ->  ended: ${endTimestamp}ms, elapsed: ${elapsed}ms\n`
-    );
-
-
+    console.log(`FINISH Step ${stepNum} of ${NUM_STEPS}: [${category}: ${categoryStepNum}]: ${description}  ->  ended: ${endTimestamp}ms, elapsed: ${endTimestamp - startTimestamp}ms\n`);
   }
   console.log('============[ JOURNEY END ]============');
-  if (FAILED_STEPS.length > 0) {
-    const plural = FAILED_STEPS.length > 1 ? 's' : '';
-    console.log(`Journey failed: ${FAILED_STEPS.length} soft failure${plural} detected:`);
-    outputSoftFailures(FAILED_STEPS);
-    assert.fail(`Journey failed: There ${plural ? 'were' : 'was'} ${FAILED_STEPS.length} soft step failure${plural}.`);
+  if (FAILED_STEPS_SOFT.length > 0) {
+    const plural = FAILED_STEPS_SOFT.length > 1 ? 's' : '';
+    console.log(`Journey failed: ${FAILED_STEPS_SOFT.length} soft failure${plural} detected:`);
+    if (typeof USE_FAILURE_ATTRIBUTES === 'boolean' && USE_FAILURE_ATTRIBUTES) {
+      $util.insights.set('softFailureStepNums', JSON.stringify(FAILED_STEPS_SOFT.map(step => step.stepNum)));
+    }
+    outputSoftFailures(FAILED_STEPS_SOFT);
+    assert.fail(`Journey failed: There ${plural ? 'were' : 'was'} ${FAILED_STEPS_SOFT.length} soft step failure${plural}.`);
   }
 }
 
 // Helper function to output the list of soft failures (if any)
 function outputSoftFailures(failedSteps) {
-  const separator = '------------------------------';
+  const separator = '-'.repeat(50);
   for (const step of failedSteps) {
-    console.log(separator);
-    console.log(step.failure);
-    console.log(`message: ${step.reason}`);
+    console.log(`${separator}\n${step.failure}\nmessage: ${step.reason}`);
   }
-  console.log(separator);
+  console.log(`${separator}\n`);
 }
 
 // Perform the steps defined in the STEPS array
