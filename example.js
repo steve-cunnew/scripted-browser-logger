@@ -99,17 +99,20 @@ async function updateCheckSettings() {
     console.log('Using the default implicit timeout of 10 seconds.');
   }
   
-  const currentDevice = await $webDriver.executeScript("return { userAgent: window.navigator.userAgent.toLowerCase(), width: window.screen.width, height: window.screen.height, portrait: window.screen.height > window.screen.width }");
-  const browser = currentDevice.userAgent.indexOf('firefox') > -1 ? 'firefox' : 'chrome';
-  let browserMajorVer = '?', browserVerLoc = currentDevice.userAgent.indexOf(browser);
+  const {userAgent, width, height} = await $webDriver.executeScript("return { userAgent: window.navigator.userAgent.toLowerCase(), width: window.screen.width, height: window.screen.height, portrait: window.screen.height > window.screen.width }");
+  let browser = 'unknown', browserMajorVer = '?', browserVerLoc = userAgent.indexOf('chrome');
   if (browserVerLoc > -1) {
-    browserVerLoc += browser.length + 1;
-    browserMajorVer = currentDevice.userAgent.slice(browserVerLoc, currentDevice.userAgent.indexOf('.', browserVerLoc));
+    browser = 'Chrome', browserVerLoc += 7, browserMajorVer = userAgent.slice(browserVerLoc, userAgent.indexOf('.', browserVerLoc));
+  } else {
+    browserVerLoc = userAgent.indexOf('firefox');
+    if (browserVerLoc > -1) {
+      browser =  'Firefox', browserVerLoc += 8, browserMajorVer = userAgent.slice(browserVerLoc, userAgent.indexOf('.', browserVerLoc));
+    }
   }
-  console.log(`Using ${browser.charAt(0).toUpperCase()}${browser.slice(1)} v${browserMajorVer} as the browser.`);
+  console.log(`Using ${browser} v${browserMajorVer} as the browser.`);
   
   // Is this script running under Mobile emulation (i.e. Mobile or Tablet in portrait or landscape mode)?
-  if (currentDevice.userAgent.indexOf('Android') === -1) {
+  if (userAgent.indexOf('android') === -1) {
     console.log('Running this check as a desktop browser.');
     const currentViewport = await $webDriver.manage().window().getRect();
     let newWidth = currentViewport.width, newHeight = currentViewport.height, changeViewport = false;
@@ -128,9 +131,9 @@ async function updateCheckSettings() {
       console.log(`Using the default viewport size of the desktop browser of ${newWidth} x ${newHeight}.`);
     }
   } else {
-    const deviceType = (currentDevice.width < 500 || currentDevice.height < 500) ? 'mobile' : 'tablet';
-    const orientation = (currentDevice.width < currentDevice.height) ? 'portrait' : 'landscape';
-    console.log(`Running this check as a ${deviceType} browser in ${orientation} mode (${currentDevice.width} x ${currentDevice.height}).`);
+    const deviceType = (width < 500 || height < 500) ? 'mobile' : 'tablet';
+    const orientation = (width < height) ? 'portrait' : 'landscape';
+    console.log(`Running this check as a ${deviceType} browser in ${orientation} mode (${width} x ${height}).`);
   }
 }
 
