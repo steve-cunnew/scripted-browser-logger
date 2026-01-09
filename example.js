@@ -99,13 +99,14 @@ async function updateCheckSettings() {
     console.log('Using the default implicit timeout of 10 seconds.');
   }
   
-  const currentDevice = await $webDriver.executeScript("return { userAgent: window.navigator.userAgent, width: window.screen.width, height: window.screen.height, portrait: window.screen.height > window.screen.width }");
-  let browserMajorVer = '?', browserVerLoc = currentDevice.userAgent.toUpperCase().indexOf($env.BROWSER);
+  const currentDevice = await $webDriver.executeScript("return { userAgent: window.navigator.userAgent.toLowerCase(), width: window.screen.width, height: window.screen.height, portrait: window.screen.height > window.screen.width }");
+  const browser = currentDevice.userAgent.indexOf('firefox') > -1 ? 'firefox' : 'chrome';
+  let browserMajorVer = '?', browserVerLoc = currentDevice.userAgent.indexOf(browser);
   if (browserVerLoc > -1) {
-    browserVerLoc += $env.BROWSER.length + 1;
+    browserVerLoc += browser.length + 1;
     browserMajorVer = currentDevice.userAgent.slice(browserVerLoc, currentDevice.userAgent.indexOf('.', browserVerLoc));
   }
-  console.log(`Using ${$env.BROWSER.charAt(0)}${$env.BROWSER.slice(1).toLowerCase()} v${browserMajorVer} as the browser.`);
+  console.log(`Using ${browser.charAt(0).toUpperCase()}${browser.slice(1)} v${browserMajorVer} as the browser.`);
   
   // Is this script running under Mobile emulation (i.e. Mobile or Tablet in portrait or landscape mode)?
   if (currentDevice.userAgent.indexOf('Android') === -1) {
