@@ -98,7 +98,8 @@ async function updateCheckSettings() {
   } else {
     console.log('Using the default implicit timeout of 10 seconds.');
   }
-  
+
+  // Get the User Agent string and screen dimensions from the Browser to determine the browser and device type
   const {userAgent, width, height} = await $webDriver.executeScript("return { userAgent: window.navigator.userAgent.toLowerCase(), width: window.screen.width, height: window.screen.height, portrait: window.screen.height > window.screen.width }");
   let browser = 'unknown', browserMajorVer = '?', browserVerLoc = userAgent.indexOf('chrome');
   if (browserVerLoc > -1) {
@@ -111,18 +112,22 @@ async function updateCheckSettings() {
   }
   console.log(`Using ${browser} v${browserMajorVer} as the browser.`);
   
-  // Is this script running under Mobile emulation (i.e. Mobile or Tablet in portrait or landscape mode)?
-  if (userAgent.indexOf('android') === -1) {
+  // Is this script running as a Desktop browser or under Mobile emulation (i.e. Mobile or Tablet in portrait or landscape mode)?
+  if (userAgent.indexOf('android') > -1) {
+    // Determine the mobile device type and orientation from the screen size
+    const deviceType = (width < 500 || height < 500) ? 'mobile' : 'tablet';
+    const orientation = (width < height) ? 'portrait' : 'landscape';
+    console.log(`Running this check as a ${deviceType} browser in ${orientation} mode (${width} x ${height}).`);
+  } else {
+    // If this is a desktop browser, check if the viewport size needs to be set
     console.log('Running this check as a desktop browser.');
     const currentViewport = await $webDriver.manage().window().getRect();
     let newWidth = currentViewport.width, newHeight = currentViewport.height, changeViewport = false;
     if (typeof DESKTOP_VIEWPORT_WIDTH === 'number' && DESKTOP_VIEWPORT_WIDTH !== newWidth) {
-      newWidth = DESKTOP_VIEWPORT_WIDTH;
-      changeViewport = true;
+      newWidth = DESKTOP_VIEWPORT_WIDTH, changeViewport = true;
     }
     if (typeof DESKTOP_VIEWPORT_HEIGHT === 'number' && DESKTOP_VIEWPORT_HEIGHT !== newHeight) {
-      newHeight = DESKTOP_VIEWPORT_HEIGHT;
-      changeViewport = true;
+      newHeight = DESKTOP_VIEWPORT_HEIGHT, changeViewport = true;
     }
     if (changeViewport) {
       console.log(`Changing the viewport size of the desktop browser to ${newWidth} x ${newHeight}.`);
@@ -130,10 +135,6 @@ async function updateCheckSettings() {
     } else {
       console.log(`Using the default viewport size of the desktop browser of ${newWidth} x ${newHeight}.`);
     }
-  } else {
-    const deviceType = (width < 500 || height < 500) ? 'mobile' : 'tablet';
-    const orientation = (width < height) ? 'portrait' : 'landscape';
-    console.log(`Running this check as a ${deviceType} browser in ${orientation} mode (${width} x ${height}).`);
   }
 }
 
@@ -141,7 +142,7 @@ async function updateCheckSettings() {
 async function processSteps(steps) {
   // A counter of steps per category
   const CATEGORY_STEP = {};
-  // A record of failed soft steps
+  // A record of failed soft and optional steps
   const FAILED_STEPS_SOFT = [];
   const FAILED_STEPS_OPTIONAL = [];
   const NUM_STEPS = steps.length;
